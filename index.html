@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Granny 2D - Versão Final (PC + Mobile)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.55.2/phaser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; text-align: center; overflow: hidden; }
+        #ui { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(0,0,0,0.95); padding: 12px; border-radius: 8px; width: 90%; max-width: 340px; font-size: 13px; }
+        input, button, select { padding: 10px; margin: 4px 0; font-size: 13px; width: 100%; box-sizing: border-box; border-radius: 4px; border: none; font-weight: bold; }
+        .btn-blue { background: #0088ff; color: white; }
+        .btn-green { background: #00aa55; color: white; }
+        .btn-red { background: #ff3333; color: white; }
+        #controls { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 8px; }
+        .btn { width: 50px; height: 50px; background: rgba(255,255,255,0.25); border: 2px solid #fff; color: white; font-size: 20px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; user-select: none; }
+        #inv { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(0,0,0,0.85); padding: 6px 10px; border-radius: 5px; font-size: 11px; text-align: left; line-height: 1.4; max-width: 170px; }
+        #btn-pause { position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(255,255,255,0.3); border: 2px solid white; color: white; font-size: 16px; font-weight: bold; width: 35px; height: 35px; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+        #btn-shoot { position: absolute; bottom: 80px; right: 20px; z-index: 10; background: #ff3333; border: 2px solid white; color: white; font-weight: bold; padding: 10px 15px; border-radius: 8px; display: none; }
+        #pause-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        #pause-menu div { width: 80%; max-width: 250px; }
+        
+        #cutscene {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; color: #33ff33; font-family: 'Courier New', monospace;
+            font-size: 16px; padding: 30px; box-sizing: border-box;
+            z-index: 30; display: none; text-align: left; line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        #cursor { display: inline-block; width: 10px; height: 18px; background: #33ff33; animation: blink 0.8s infinite; vertical-align: middle; }
+        @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div id="setup">
+        <p style="margin:4px 0; font-weight:bold;">Seu Nick:</p>
+        <input type="text" id="nick-input" placeholder="Ex: Travesso" value="Travesso" maxlength="12">
+        
+        <p style="margin:8px 0 4px 0; font-weight:bold;">Cor da bolinha:</p>
+        <select id="color-select">
+            <option value="0xff0000">Vermelho</option>
+            <option value="0x00ff00">Verde</option>
+            <option value="0x0088ff" selected>Azul</option>
+            <option value="0xffff00">Amarelo</option>
+            <option value="0xff00ff">Rosa</option>
+            <option value="0x00ffff">Ciano</option>
+            <option value="0xff8800">Laranja</option>
+            <option value="0xffffff">Branco</option>
+        </select>
+
+        <p style="margin:10px 0 4px 0; font-weight:bold;">Código da Sala:</p>
+        <input type="text" id="room-code-input" placeholder="Ex: GRANNYX" value="GRANNYX">
+        
+        <button class="btn-green" onclick="createCustomRoom()">1. Criar Sala</button>
+        <button class="btn-blue" onclick="joinCustomRoom()">2. Entrar na Sala</button>
+        <hr style="border-color:#444; margin: 10px 0;">
+        <button class="btn-blue" onclick="startAloneGame()">🎮 Jogar Solo</button>
+    </div>
+</div>
+
+<div id="cutscene">
+    <div id="cutscene-text"></div><span id="cursor"></span>
+</div>
+
+<div id="inv" style="display:none;">
+    Chaves: <span id="keys-list">Nenhuma</span><br>
+    Peças Carro: <span id="car-parts">0/20</span><br>
+    Arma: <span id="gun-status">Não</span>
+</div>
+
+<div id="btn-pause" style="display:none;" onclick="togglePause()">⏸</div>
+<button id="btn-shoot" onclick="shootGun()">🎯 ATIRAR</button>
+
+<div id="pause-menu">
+    <div>
+        <h2>JOGO PAUSADO</h2>
+        <button onclick="togglePause()" class="btn-blue">Continuar</button>
+        <br><br>
+        <button onclick="exitToMainMenu()" class="btn-red">Sair para o Menu</button>
+    </div>
+</div>
+
+<div id="controls" style="display:none;">
+    <div class="btn" id="btn-left">←</div>
+    <div class="btn" id="btn-up">↑</div>
+    <div class="btn" id="btn-down">↓</div>
+    <div class="btn" id="btn-right">→</div>
+</div>
+
+<script src="js/game.js"></script>
+</body>
+</html>
